@@ -70,23 +70,51 @@
       color: grey;
     }
 
+    #settings-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #444;
+      border: none;
+      color: white;
+      font-size: 1.2rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
     @media (max-width: 480px) {
       h1 { font-size: 1.5rem; }
     }
   </style>
 </head>
 <body>
+  <button id="settings-btn">⚙️ Settings</button>
   <h1>SmartThings Dashboard</h1>
   <div id="buttons"></div>
 
   <script>
-    const token = localStorage.getItem('st_pat') || 'YOUR_PAT_HERE';
-    const switches = [
-      { id: "DEVICE_ID_1" },
-      { id: "DEVICE_ID_2" },
-      { id: "DEVICE_ID_3" },
-      { id: "DEVICE_ID_4" }
-    ];
+    function loadSettings() {
+      let token = localStorage.getItem('st_pat');
+      let ids = localStorage.getItem('device_ids');
+
+      if (!token) {
+        token = prompt("Enter your SmartThings PAT (Personal Access Token):");
+        localStorage.setItem('st_pat', token);
+      }
+
+      if (!ids) {
+        ids = prompt("Enter your Device IDs (comma-separated):");
+        localStorage.setItem('device_ids', ids);
+      }
+
+      return {
+        token,
+        switches: ids.split(',').map(id => ({ id: id.trim() }))
+      };
+    }
+
+    let { token, switches } = loadSettings();
 
     const headers = {
       "Authorization": "Bearer " + token,
@@ -103,7 +131,7 @@
       const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}`, { headers });
       const json = await res.json();
       const fullName = json.label || json.name || "Switch";
-      return fullName.split(' ')[0]; // First word only
+      return fullName.split(' ')[0];
     }
 
     async function toggle(device, currentState) {
@@ -145,8 +173,25 @@
       }
     }
 
+    document.getElementById("settings-btn").addEventListener("click", () => {
+      const newToken = prompt("Update SmartThings PAT:", localStorage.getItem('st_pat') || "");
+      const newIds = prompt("Update Device IDs (comma-separated):", localStorage.getItem('device_ids') || "");
+
+      if (newToken && newIds) {
+        localStorage.setItem('st_pat', newToken);
+        localStorage.setItem('device_ids', newIds);
+
+        // Reload settings and refresh display
+        const updated = loadSettings();
+        token = updated.token;
+        switches.length = 0;
+        updated.switches.forEach(s => switches.push(s));
+        updateButtons();
+      }
+    });
+
     updateButtons();
-    setInterval(updateButtons, 5000); // Refresh every 5 seconds
+    setInterval(updateButtons, 5000);
   </script>
 </body>
 </html>
