@@ -288,46 +288,170 @@
   });
 
   // Handle settings button toggle
-  settingsBtn.addEventListener('click', () => {
-    if (settingsView.classList.contains('active')) {
-      // Try save then show dashboard if valid
-      if (saveSettings()) {
-        loadSettings();
-        startApp(); // restart fetches with new settings
-        showDashboard();
-      }
-    } else {
-      showSettings();
-    }
-  });
+  settingsBtn.addEventListener('
 
-  // Handle settings form submit (save & switch to dashboard)
-  document.getElementById('settingsForm').addEventListener('submit', e => {
-    e.preventDefault();
-    if (saveSettings()) {
-      loadSettings();
-      startApp();
-      showDashboard();
-    }
-  });
+click', () => {
+if (settingsView.classList.contains('active')) {
+// Save settings and go to dashboard if valid
+if (saveSettings()) {
+loadSettings();
+startApp();
+showDashboard();
+}
+} else {
+// Show settings view
+loadSettings();
+showSettings();
+}
+});
 
-  // --- App logic below ---
+// Also handle form submit for save button
+document.getElementById('settingsForm').addEventListener('submit', e => {
+e.preventDefault();
+if (saveSettings()) {
+loadSettings();
+startApp();
+showDashboard();
+}
+});
 
-  let wakeLock = null;
-  let lastMotionTime = Date.now();
-  let releaseTimer;
-  let currentMotionState = 'inactive';
+// --- SmartThings Integration and App Logic ---
 
-  // Variables that will be set after loading settings
-  let token = '';
-  let motionSensorId = '';
-  let switches = [];
-  let headers = {};
+let token = '';
+let motionSensorId = '';
+let switches = [];
 
-  async function requestWakeLock() {
-    try {
-      if (!wakeLock) {
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeLock.addEventListener('release', () => {
-          console.log('Wake Lock released');
-          wakeLock =
+let headers = {};
+let wakeLock = null;
+let lastMotionTime = 0;
+let currentMotionState = null;
+let pollIntervalId = null;
+
+async function requestWakeLock() {
+try {
+if ('wakeLock' in navigator) {
+if (!wakeLock) {
+wakeLock = await navigator.wakeLock.request('screen');
+wakeLock.addEventListener('release', () => {
+wakeLock = null;
+});
+console.log('Wake Lock acquired');
+}
+}
+} catch (err) {
+console.error('Wake Lock error:', err);
+}
+}
+
+function releaseWakeLock() {
+if (wakeLock) {
+wakeLock.release();
+wakeLock = null;
+console.log('Wake Lock released');
+}
+}
+
+async function fetchStatus(device) {
+try {
+const res = await fetch(https://api.smartthings.com/v1/devices/${device.id}/status, { headers });
+if (!res.ok) {
+throw new Error(Status fetch failed for ${device.name});
+}
+const json = await res.json();
+return json.components.main.switch.switch.value === 'on';
+} catch (e) {
+console.error(e);
+return false;
+}
+}
+
+async function sendToggle(device, currentState) {
+const command = currentState ? "off" : "on";
+try {
+const res = await fetch(https://api.smartthings.com/v1/devices/${device.id}/commands, {
+method: 'POST',
+headers,
+body: JSON.stringify({
+commands: [{ component: "main", capability: "switch", command }]
+})
+});
+if (!res.ok) {
+throw new Error(Toggle failed for ${device.name});
+}
+} catch (e) {
+console.error(e);
+alert(Failed to toggle ${device.name}. Check your network and PAT.);
+}
+}
+
+async function updateButtons() {
+const container = document.getElementById("buttons");
+container.innerHTML = "";
+for (const device of switches) {
+const isOn = await fetchStatus(device);
+const btn = document.createElement("button");
+btn.className = "btn " + (isOn ? "on" : "off");
+const firstWord = device.name.split(/\s+/)[0];
+btn.innerHTML = <div class="bell-icon" aria-hidden="true">🔔</div>${firstWord}<br><small>(${isOn ? "ON" : "OFF"})</small>;
+btn.onclick = async () => {
+btn.disabled = true;
+await sendToggle(device, isOn);
+await updateButtons();
+btn.disabled = false;
+};
+container.appendChild(btn);
+}
+}
+
+async function pollMotionSensor() {
+try {
+const res = await fetch(https://api.smartthings.com/v1/devices/${motionSensorId}/status, { headers });
+if (!res.ok) {
+throw new Error('Motion sensor fetch failed');
+}
+const json = await res.json();
+const motionVal = json.components.main.motion.motion.value;
+if (motionVal !== currentMotionState) {
+currentMotionState = motionVal;
+if (motionVal === 'active') {
+// Motion detected - wake screen and refresh buttons
+lastMotionTime = Date.now();
+await requestWakeLock();
+await updateButtons();
+}
+}
+// If no motion for 30s, release wake lock
+if (Date.now() - lastMotionTime > 30000) {
+releaseWakeLock();
+}
+} catch (e) {
+console.error('Motion poll error:', e);
+}
+}
+
+function startApp() {
+token = localStorage.getItem('smartthings_pat');
+motionSensorId = localStorage.getItem('motion_sensor_id');
+switches = JSON.parse(localStorage.getItem('device_ids')) || [];
+headers = {
+  "Authorization": "Bearer " + token,
+  "Content-Type": "application/json"
+};
+
+if (pollIntervalId) clearInterval(pollIntervalId);
+pollIntervalId = setInterval(pollMotionSensor, 3000);
+updateButtons();
+}
+
+// Start app if settings valid on load
+window.addEventListener('DOMContentLoaded', () => {
+const pat = localStorage.getItem('smartthings_pat');
+const motionId = localStorage.getItem('motion_sensor_id');
+const devices = JSON.parse(localStorage.getItem('device_ids') || '[]');
+if (pat && motionId && devices.length === 4) {
+startApp();
+}
+});
+</script>
+
+</body> </html> ```
