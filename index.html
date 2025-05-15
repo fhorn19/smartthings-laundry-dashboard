@@ -242,32 +242,33 @@
       };
 
       async function updateButtons() {
-        const container = document.getElementById("buttons");
-        container.innerHTML = "";
+  const container = document.getElementById("buttons");
+  container.innerHTML = "";
 
-        for (let device of switches) {
-          const [label, isOn] = await Promise.all([
-            getLabel(device, headers),
-            getStatus(device, headers)
-          ]);
+  for (let device of switches) {
+    const [label, isOn] = await Promise.all([
+      getLabel(device, headers),
+      getStatus(device, headers)
+    ]);
 
-          const btn = document.createElement("button");
-          btn.className = "btn " + (isOn ? "on" : "off");
+    const btn = document.createElement("button");
+    btn.className = "btn " + (isOn ? "on" : "off");
 
-          const icon = document.createElement("div");
-          icon.className = "icon " + (isOn ? "on" : "off");
-          icon.innerHTML = "🔔";
+    const icon = document.createElement("div");
+    icon.className = "icon " + (isOn ? "on" : "off");
+    icon.innerHTML = "🔔";
 
-          const text = document.createElement("div");
-          text.innerText = `${label}
+    const text = document.createElement("div");
+    text.innerText = `${label}
 (${isOn ? "ON" : "OFF"})`;
 
-          btn.appendChild(icon);
-          btn.appendChild(text);
-          btn.onclick = () => toggle(device, isOn, headers, updateButtons);
-          container.appendChild(btn);
-        }
-      }
+    btn.appendChild(icon);
+    btn.appendChild(text);
+    btn.onclick = () => toggle(device, isOn, headers, updateButtons);
+    container.appendChild(btn);
+  }
+}
+
 
       document.getElementById("settings-btn").addEventListener("click", () => {
         document.getElementById("buttons").style.display = "none";
