@@ -41,6 +41,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      white-space: pre-line;
     }
 
     button.btn.off {
@@ -98,15 +99,19 @@
       let token = localStorage.getItem('st_pat');
       let ids = localStorage.getItem('device_ids');
 
-      if (!token) {
+      // Prompt until non-empty token
+      while (!token || token.trim() === '') {
         token = prompt("Enter your SmartThings PAT (Personal Access Token):");
-        localStorage.setItem('st_pat', token);
+        if (token) token = token.trim();
       }
+      localStorage.setItem('st_pat', token);
 
-      if (!ids) {
+      // Prompt until non-empty device ids
+      while (!ids || ids.trim() === '') {
         ids = prompt("Enter your Device IDs (comma-separated):");
-        localStorage.setItem('device_ids', ids);
+        if (ids) ids = ids.trim();
       }
+      localStorage.setItem('device_ids', ids);
 
       return {
         token,
@@ -122,16 +127,24 @@
     };
 
     async function getStatus(device) {
-      const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}/status`, { headers });
-      const json = await res.json();
-      return json.components.main.switch.switch.value === 'on';
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}/status`, { headers });
+        const json = await res.json();
+        return json.components.main.switch.switch.value === 'on';
+      } catch {
+        return false; // fallback if error
+      }
     }
 
     async function getLabel(device) {
-      const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}`, { headers });
-      const json = await res.json();
-      const fullName = json.label || json.name || "Switch";
-      return fullName.split(' ')[0];
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}`, { headers });
+        const json = await res.json();
+        const fullName = json.label || json.name || "Switch";
+        return fullName.split(' ')[0];
+      } catch {
+        return "Switch";
+      }
     }
 
     async function toggle(device, currentState) {
@@ -174,19 +187,22 @@
     }
 
     document.getElementById("settings-btn").addEventListener("click", () => {
-      const newToken = prompt("Update SmartThings PAT:", localStorage.getItem('st_pat') || "");
-      const newIds = prompt("Update Device IDs (comma-separated):", localStorage.getItem('device_ids') || "");
+      let newToken = prompt("Update SmartThings PAT:", localStorage.getItem('st_pat') || "");
+      if (newToken) newToken = newToken.trim();
+      let newIds = prompt("Update Device IDs (comma-separated):", localStorage.getItem('device_ids') || "");
+      if (newIds) newIds = newIds.trim();
 
       if (newToken && newIds) {
         localStorage.setItem('st_pat', newToken);
         localStorage.setItem('device_ids', newIds);
 
-        // Reload settings and refresh display
         const updated = loadSettings();
         token = updated.token;
         switches.length = 0;
         updated.switches.forEach(s => switches.push(s));
         updateButtons();
+      } else {
+        alert("Both SmartThings PAT and Device IDs are required.");
       }
     });
 
