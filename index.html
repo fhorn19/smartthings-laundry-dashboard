@@ -1,10 +1,11 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SmartThings Dashboard</title>
+  <title>Laundry Notifications</title>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
+      font-family: 'Arial', sans-serif;
       background: #0f0f0f;
       color: white;
       margin: 0;
@@ -84,6 +85,26 @@
       cursor: pointer;
     }
 
+    #settings-page {
+      background: #1a1a1a;
+      padding: 1rem;
+      border-radius: 12px;
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    #settings-page input {
+      background: #333;
+      color: white;
+      border: none;
+      padding: 0.5rem;
+      border-radius: 8px;
+      width: 100%;
+    }
+
     @media (max-width: 480px) {
       h1 { font-size: 1.5rem; }
     }
@@ -91,29 +112,33 @@
 </head>
 <body>
   <button id="settings-btn">⚙️ Settings</button>
-  <h1>SmartThings Dashboard</h1>
+  <h1>Laundry Notifications</h1>
   <div id="buttons"></div>
+
+  <div id="settings-page">
+    <h2>Settings</h2>
+    <label>
+      SmartThings PAT:
+      <input type="text" id="pat-input" />
+    </label>
+    <label>
+      Device IDs (comma-separated):
+      <input type="text" id="ids-input" />
+    </label>
+    <div style="display: flex; justify-content: space-between; gap: 1rem;">
+      <button id="save-settings" style="flex: 1;">Save</button>
+      <button id="cancel-settings" style="flex: 1;">Cancel</button>
+    </div>
+  </div>
 
   <script>
     function loadSettings() {
-      let token = localStorage.getItem('st_pat');
-      let ids = localStorage.getItem('device_ids');
-
-      while (!token || token.trim() === '') {
-        token = prompt("Enter your SmartThings PAT (Personal Access Token):");
-        if (token) token = token.trim();
-      }
-      localStorage.setItem('st_pat', token);
-
-      while (!ids || ids.trim() === '') {
-        ids = prompt("Enter your Device IDs (comma-separated):");
-        if (ids) ids = ids.trim();
-      }
-      localStorage.setItem('device_ids', ids);
+      let token = localStorage.getItem('st_pat') || '';
+      let ids = localStorage.getItem('device_ids') || '';
 
       return {
         token,
-        switches: ids.split(',').map(id => ({ id: id.trim() }))
+        switches: ids ? ids.split(',').map(id => ({ id: id.trim() })) : []
       };
     }
 
@@ -176,7 +201,8 @@
           icon.innerHTML = "🔔";
 
           const text = document.createElement("div");
-          text.innerText = `${label}\n(${isOn ? "ON" : "OFF"})`;
+          text.innerText = `${label}
+(${isOn ? "ON" : "OFF"})`;
 
           btn.appendChild(icon);
           btn.appendChild(text);
@@ -186,23 +212,34 @@
       }
 
       document.getElementById("settings-btn").addEventListener("click", () => {
-        let newToken = prompt("Update SmartThings PAT:", localStorage.getItem('st_pat') || "");
-        if (newToken) newToken = newToken.trim();
-        let newIds = prompt("Update Device IDs (comma-separated):", localStorage.getItem('device_ids') || "");
-        if (newIds) newIds = newIds.trim();
+        document.getElementById("buttons").style.display = "none";
+        document.getElementById("settings-page").style.display = "flex";
 
-        if (newToken && newIds) {
-          localStorage.setItem('st_pat', newToken);
-          localStorage.setItem('device_ids', newIds);
-          location.reload();
-        } else {
-          alert("Both SmartThings PAT and Device IDs are required.");
-        }
+        document.getElementById("pat-input").value = localStorage.getItem('st_pat') || '';
+        document.getElementById("ids-input").value = localStorage.getItem('device_ids') || '';
       });
 
       updateButtons();
       setInterval(updateButtons, 5000);
     }
+
+    document.getElementById("save-settings").addEventListener("click", () => {
+      const newToken = document.getElementById("pat-input").value.trim();
+      const newIds = document.getElementById("ids-input").value.trim();
+
+      if (newToken && newIds) {
+        localStorage.setItem('st_pat', newToken);
+        localStorage.setItem('device_ids', newIds);
+        location.reload();
+      } else {
+        alert("Both fields are required.");
+      }
+    });
+
+    document.getElementById("cancel-settings").addEventListener("click", () => {
+      document.getElementById("settings-page").style.display = "none";
+      document.getElementById("buttons").style.display = "grid";
+    });
 
     window.onload = main;
   </script>
