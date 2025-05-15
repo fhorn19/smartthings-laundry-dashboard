@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SmartThings Button Dashboard</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+    }
+    .btn, .save-btn, .settings-btn {
+      margin: 10px;
+      padding: 20px;
+      font-size: 18px;
+      background: #333;
+      border: none;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .on { background: green; }
+    .off { background: red; }
+    .error {
+      background: darkred;
+      padding: 10px;
+      margin-bottom: 10px;
+      display: none;
+    }
+    #settings-form input {
+      width: 300px;
+      padding: 10px;
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>SmartThings Dashboard</h1>
+  <button class="settings-btn" onclick="showSettings()">⚙️ Settings</button>
+  <div id="error" class="error"></div>
+
+  <div id="settings-form" style="display:none;"></div>
+  <div id="buttons"></div>
+
+<script>
+  let config = {
+    token: '',
+    homeId: '',
+    switches: [],
+    motionSensorId: ''
+  };
+
+  let wakeLock = null;
+  let motionTimeout = null;
+
+  function showSettings(prefill = true) {
+    const form = document.getElementById("settings-form");
+    form.style.display = 'block';
+    const stored = JSON.parse(localStorage.getItem("smartConfig")) || config;
+    form.innerHTML = `
+      <h2>Settings</h2>
+      <input placeholder="SmartThings PAT" id="token" value="${prefill ? stored.token : ''}"><br>
+      <input placeholder="Home ID (optional)" id="homeId" value="${prefill ? stored.homeId : ''}"><br>
+      <input placeholder="Switch Device ID 1" id="switch1" value="${prefill ? stored.switches?.[0] || '' : ''}"><br>
+      <input placeholder="Switch Device ID 2" id="switch2" value="${prefill ? stored.switches?.[1] || '' : ''}"><br>
+      <input placeholder="Switch Device ID 3" id="switch3" value="${prefill ? stored.switches?.[2] || '' : ''}"><br>
+      <input placeholder="Switch Device ID 4" id="switch4" value="${prefill ? stored.switches?.[3] || '' : ''}"><br>
+      <input placeholder="Motion Sensor Device ID" id="motionSensorId" value="${prefill ? stored.motionSensorId : ''}"><br>
+      <button class="save-btn" onclick="saveSettings()">Save & Reload</button>
+    `;
+  }
+
+  function saveSettings() {
+    config.token = document.getElementById("token").value;
+    config.homeId = document.getElementById("homeId").value;
+    config.switches = [
+      document.getElementById("switch1").value,
+      document.getElementById("switch2").value,
+      document.getElementById("switch3").value,
+      document.getElementById("switch4").value
+    ];
+    config.motionSensorId = document.getElementById("motionSensorId").value;
+    localStorage.setItem("smartConfig", JSON.stringify(config));
+    document.getElementById("settings-form").style.display = "none";
+    init(); // reload with new settings
+  }
+
+  function showError(message) {
+    const errorDiv = document.getElementById("error");
+    errorDiv.innerText = message;
+    errorDiv.style.display = 'block';
+    setTimeout(() => errorDiv.style.display = 'none', 5000);
+  }
+
+  function loadConfig() {
+    const stored = localStorage.getItem("smartConfig");
+    if (stored) {
+      config = JSON.parse(stored);
+      return true;
+    }
+    return false;
+  }
+
+  function getHeaders() {
+    return {
+      "Authorization": "Bearer " + config.token,
+      "Content-Type": "application/json"
+    };
+  }
+
+  async function getStatus(deviceId) {
+    try {
+      const res = await fetch(`https://api.smartthings.com/v1/devices/${deviceId}/status`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(res.status);
+      const json = await res.json();
+      return json.components.main.switch.switch.value === 'on';
+    } catch (e) {
+      showError("Error getting status: " + e.message);
+      return null;
+    }
+  }
+
+  async function toggle(deviceId, currentState, btn) {
+    const command = currentState ? "off" : "on";
+    try {
+      btn.disabled = true;
+      const res = await fetch(`https://api.smartthings.com/v1/devices/${deviceId}/commands`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          commands: [{ component: "main", capability: "switch", command }]
+        })
+      });
+      if (!res.ok) throw new Error(res.status);
+    } catch (e) {
+      showError("Error toggling: " + e.message);
+    } finally {
+      btn.disabled = false;
+      updateButtons();
+    }
+  }
+
+  async function updateButtons() {
+    const container = document.getElementById("buttons");
+    container.innerHTML = "";
+    for (let i = 0; i < config.switches.length; i++) {
+      const id = config.switches[i];
+      const isOn = await getStatus(id);
+      const btn = document.createElement("button");
+      btn.className = "btn " + (isOn ? "on" : "off");
+      btn.innerText = `Switch ${i + 1}\n(${isOn ? "ON" : "OFF"})`;
+      btn.onclick = () => toggle(id, isOn, btn);
+      container.appendChild(btn);
+    }
+  }
+
+  async function checkMotion() {
+    try {
+      const res = await fetch(`https://api.smartthings.com/v1/devices/${config.motionSensorId}/status`, { headers: getHeaders() });
+      if (!res.ok) throw new Error(res.status);
+      const json = await res.json();
+      return json.components.main.motionSensor.motion.value === 'active';
+    } catch (e) {
+      showError("Error checking motion: " + e.message);
+      return false;
+    }
+  }
+
+  async function wakeScreenIfMotion() {
+    const motion = await checkMotion();
+    if (motion && 'wakeLock' in navigator) {
+      try {
+        if (!wakeLock) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log("Wake lock acquired.");
+        }
+        clearTimeout(motionTimeout);
+        motionTimeout = setTimeout(() => {
+          if (wakeLock) {
+            wakeLock.release().then(() => {
+              console.log("Wake lock released.");
+              wakeLock = null;
+            });
+          }
+        }, 30000); // 30 sec timeout
+      } catch (e) {
+        console.error("Wake lock error:", e);
+      }
+    }
+  }
+
+  function init() {
+    if (!loadConfig()) {
+      showSettings(false);
+      return;
+    }
+    updateButtons();
+    setInterval(updateButtons, 5000);
+    setInterval(wakeScreenIfMotion, 5000);
+  }
+
+  window.onload = init;
+</script>
+</body>
+</html>
