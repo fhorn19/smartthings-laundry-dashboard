@@ -53,14 +53,209 @@
       background: #28a745;
     }
 
-    button.btn:hover {
-      filter: brightness(1.1);
-      transform: scale(1.02);
-    }
-
     .icon {
       font-size: 2rem;
       margin-bottom: 0.5rem;
     }
 
-    .icon.on
+    .icon.on {
+      color: gold;
+    }
+
+    .icon.off {
+      color: grey;
+    }
+
+    #settings-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #444;
+      border: none;
+      color: white;
+      font-size: 1.2rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #settings-view {
+      display: none;
+      flex-direction: column;
+      align-items: flex-start;
+      max-width: 400px;
+      width: 100%;
+      margin-top: 2rem;
+    }
+
+    #settings-view label {
+      margin-top: 1rem;
+    }
+
+    #settings-view input {
+      width: 100%;
+      padding: 0.5rem;
+      font-size: 1rem;
+      border-radius: 6px;
+      border: none;
+      margin-top: 0.25rem;
+    }
+
+    #save-btn {
+      margin-top: 1.5rem;
+      padding: 0.75rem 1.25rem;
+      font-size: 1rem;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <button id="settings-btn">⚙️ Settings</button>
+  <h1>SmartThings Dashboard</h1>
+
+  <div id="buttons"></div>
+
+  <div id="settings-view">
+    <label for="pat">SmartThings PAT:</label>
+    <input type="text" id="pat">
+
+    <label for="device-ids">Device IDs (comma-separated):</label>
+    <input type="text" id="device-ids">
+
+    <label for="motion-id">Motion Sensor Device ID (optional):</label>
+    <input type="text" id="motion-id">
+
+    <button id="save-btn">Save & Apply</button>
+  </div>
+
+  <script>
+    function getStoredSettings() {
+      return {
+        pat: localStorage.getItem('st_pat'),
+        ids: localStorage.getItem('device_ids'),
+        motion: localStorage.getItem('motion_id')
+      };
+    }
+
+    function saveSettings(pat, ids, motionId) {
+      localStorage.setItem('st_pat', pat);
+      localStorage.setItem('device_ids', ids);
+      localStorage.setItem('motion_id', motionId);
+    }
+
+    async function getStatus(device, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}/status`, { headers });
+        const json = await res.json();
+        return json.components.main.switch.switch.value === 'on';
+      } catch {
+        return false;
+      }
+    }
+
+    async function getLabel(device, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}`, { headers });
+        const json = await res.json();
+        const fullName = json.label || json.name || "Switch";
+        return fullName.split(' ')[0];
+      } catch {
+        return "Switch";
+      }
+    }
+
+    async function toggle(device, currentState, headers, updateFn) {
+      const command = currentState ? "off" : "on";
+      await fetch(`https://api.smartthings.com/v1/devices/${device.id}/commands`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          commands: [{ component: "main", capability: "switch", command }]
+        })
+      });
+      updateFn();
+    }
+
+    async function updateButtons(settings) {
+      const container = document.getElementById("buttons");
+      container.innerHTML = "";
+
+      const headers = {
+        "Authorization": "Bearer " + settings.pat,
+        "Content-Type": "application/json"
+      };
+
+      const ids = settings.ids.split(',').map(id => id.trim()).filter(id => id && id !== settings.motion);
+
+      for (let id of ids) {
+        const device = { id };
+        const [label, isOn] = await Promise.all([
+          getLabel(device, headers),
+          getStatus(device, headers)
+        ]);
+
+        const btn = document.createElement("button");
+        btn.className = "btn " + (isOn ? "on" : "off");
+
+        const icon = document.createElement("div");
+        icon.className = "icon " + (isOn ? "on" : "off");
+        icon.innerHTML = "🔔";
+
+        const text = document.createElement("div");
+        text.innerText = `${label}\n(${isOn ? "ON" : "OFF"})`;
+
+        btn.appendChild(icon);
+        btn.appendChild(text);
+        btn.onclick = () => toggle(device, isOn, headers, () => updateButtons(settings));
+
+        container.appendChild(btn);
+      }
+    }
+
+    function showDashboard() {
+      document.getElementById("settings-view").style.display = "none";
+      document.getElementById("buttons").style.display = "grid";
+    }
+
+    function showSettings() {
+      document.getElementById("buttons").style.display = "none";
+      document.getElementById("settings-view").style.display = "flex";
+
+      const { pat, ids, motion } = getStoredSettings();
+      document.getElementById('pat').value = pat || "";
+      document.getElementById('device-ids').value = ids || "";
+      document.getElementById('motion-id').value = motion || "";
+    }
+
+    document.getElementById("settings-btn").addEventListener("click", showSettings);
+
+    document.getElementById("save-btn").addEventListener("click", () => {
+      const pat = document.getElementById('pat').value.trim();
+      const ids = document.getElementById('device-ids').value.trim();
+      const motion = document.getElementById('motion-id').value.trim();
+
+      if (pat && ids) {
+        saveSettings(pat, ids, motion);
+        showDashboard();
+        updateButtons({ pat, ids, motion });
+      } else {
+        alert("PAT and Device IDs are required.");
+      }
+    });
+
+    window.onload = () => {
+      const settings = getStoredSettings();
+      if (!settings.pat || !settings.ids) {
+        showSettings();
+      } else {
+        showDashboard();
+        updateButtons(settings);
+      }
+    };
+  </script>
+</body>
+</html>
