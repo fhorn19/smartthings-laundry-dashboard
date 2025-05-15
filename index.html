@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -125,6 +124,11 @@
       Device IDs (comma-separated):
       <input type="text" id="ids-input" />
     </label>
+    <!-- Motion Sensor Input -->
+    <label>
+      Motion Sensor Device ID:
+      <input type="text" id="motion-id-input" />
+    </label>
     <div style="display: flex; justify-content: space-between; gap: 1rem;">
       <button id="save-settings" style="flex: 1;">Save</button>
       <button id="cancel-settings" style="flex: 1;">Cancel</button>
@@ -135,9 +139,11 @@
     function loadSettings() {
       let token = localStorage.getItem('st_pat') || '';
       let ids = localStorage.getItem('device_ids') || '';
+      let motionId = localStorage.getItem('motion_id') || '';
 
       return {
         token,
+        motionId,
         switches: ids ? ids.split(',').map(id => ({ id: id.trim() })) : []
       };
     }
@@ -175,8 +181,60 @@
       updateFn();
     }
 
+    async function getMotionStatus(motionId, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${motionId}/status`, { headers });
+        const json = await res.json();
+        return json.components.main.motionSensor.motion.value === 'active';
+      } catch {
+        return false;
+      }
+    }
+
+    let wakeLock = null;
+    let releaseTimeout = null;
+
+    async function requestWakeLock() {
+      try {
+        if (!wakeLock) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error("Wake lock error:", err);
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) {
+        wakeLock.release().then(() => {
+          wakeLock = null;
+        });
+      }
+    }
+
+    async function monitorMotion(motionId, headers) {
+      let wasActive = false;
+
+      setInterval(async () => {
+        const isActive = await getMotionStatus(motionId, headers);
+
+        if (isActive && !wasActive) {
+          requestWakeLock();
+          if (releaseTimeout) clearTimeout(releaseTimeout);
+        }
+
+        if (!isActive && wasActive) {
+          releaseTimeout = setTimeout(() => {
+            releaseWakeLock();
+          }, 30000);
+        }
+
+        wasActive = isActive;
+      }, 5000);
+    }
+
     async function main() {
-      const { token, switches } = loadSettings();
+      const { token, switches, motionId } = loadSettings();
 
       const headers = {
         "Authorization": "Bearer " + token,
@@ -217,7 +275,12 @@
 
         document.getElementById("pat-input").value = localStorage.getItem('st_pat') || '';
         document.getElementById("ids-input").value = localStorage.getItem('device_ids') || '';
+        document.getElementById("motion-id-input").value = localStorage.getItem('motion_id') || '';
       });
+
+      if (motionId) {
+        monitorMotion(motionId, headers);
+      }
 
       updateButtons();
       setInterval(updateButtons, 5000);
@@ -226,13 +289,15 @@
     document.getElementById("save-settings").addEventListener("click", () => {
       const newToken = document.getElementById("pat-input").value.trim();
       const newIds = document.getElementById("ids-input").value.trim();
+      const newMotionId = document.getElementById("motion-id-input").value.trim();
 
       if (newToken && newIds) {
         localStorage.setItem('st_pat', newToken);
         localStorage.setItem('device_ids', newIds);
+        localStorage.setItem('motion_id', newMotionId || '');
         location.reload();
       } else {
-        alert("Both fields are required.");
+        alert("Both PAT and device IDs are required.");
       }
     });
 
