@@ -1,357 +1,210 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Laundry Notifications</title>
+  <title>SmartThings Dashboard</title>
   <style>
     body {
-      font-family: sans-serif;
-      background: #111;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f0f0f;
       color: white;
       margin: 0;
-      padding: 0;
-      overflow: hidden;
+      padding: 1rem;
       display: flex;
       flex-direction: column;
-      height: 100vh;
-    }
-    header {
-      display: flex;
-      justify-content: space-between;
       align-items: center;
-      padding: 10px 16px;
-      background: #222;
-      box-sizing: border-box;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 24px;
-      user-select: none;
-    }
-    #settingsBtn {
-      background: none;
-      border: none;
-      color: white;
-      font-size: 24px;
-      cursor: pointer;
-      user-select: none;
-    }
-    #dashboard, #settings {
-      flex: 1;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: start;
-      padding: 10px;
-      box-sizing: border-box;
-      overflow-y: auto;
-    }
-    #dashboard.active, #settings.active {
-      display: flex;
-    }
-    #buttons {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      width: 100%;
-      max-width: 600px;
-      padding: 10px 0;
-      box-sizing: border-box;
-    }
-    .btn {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-size: 18px;
-      border: none;
-      border-radius: 12px;
-      padding: 20px;
-      color: white;
-      transition: background 0.3s, filter 0.3s;
-      aspect-ratio: 1 / 1;
-      cursor: pointer;
-      user-select: none;
-    }
-    .btn.on {
-      background: green;
-      filter: none;
-    }
-    .btn.off {
-      background: #333;
-      filter: brightness(0.5);
-    }
-    .bell-icon {
-      font-size: 36px;
-      margin-bottom: 8px;
-      user-select: none;
-    }
-    .btn.on .bell-icon {
-      color: yellow;
-    }
-    .btn.off .bell-icon {
-      color: gray;
     }
 
-    /* Settings form styling */
-    form {
-      max-width: 600px;
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 1rem;
+    }
+
+    #buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 20px;
       width: 100%;
+      max-width: 600px;
+    }
+
+    button.btn {
+      padding: 1.5rem;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 12px;
+      background: #222;
+      color: white;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      user-select: none;
+      align-items: center;
+      justify-content: center;
+      white-space: pre-line;
     }
-    label {
-      font-weight: bold;
-      margin-bottom: 4px;
+
+    button.btn.off {
+      background: #2a2a2a;
+      filter: brightness(0.7);
     }
-    input[type="text"], input[type="password"] {
-      width: 100%;
-      padding: 8px 12px;
-      border-radius: 6px;
+
+    button.btn.on {
+      background: #28a745;
+    }
+
+    button.btn:hover {
+      filter: brightness(1.1);
+      transform: scale(1.02);
+    }
+
+    .icon {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .icon.on {
+      color: gold;
+    }
+
+    .icon.off {
+      color: grey;
+    }
+
+    #settings-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #444;
       border: none;
-      font-size: 16px;
-      box-sizing: border-box;
-    }
-    .device-row {
-      display: flex;
-      gap: 8px;
-    }
-    .device-row input[type="text"] {
-      flex: 1;
-    }
-    #saveSettingsBtn {
-      padding: 12px;
-      font-size: 18px;
-      background: #0078d7;
-      border: none;
-      border-radius: 8px;
       color: white;
+      font-size: 1.2rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
       cursor: pointer;
-      user-select: none;
-      margin-top: 10px;
-      align-self: flex-start;
-      transition: background 0.3s;
     }
-    #saveSettingsBtn:hover {
-      background: #005a9e;
-    }
-    #settingsNote {
-      font-size: 14px;
-      color: #ccc;
-      margin-bottom: 16px;
+
+    @media (max-width: 480px) {
+      h1 { font-size: 1.5rem; }
     }
   </style>
 </head>
 <body>
+  <button id="settings-btn">⚙️ Settings</button>
+  <h1>SmartThings Dashboard</h1>
+  <div id="buttons"></div>
 
-  <header>
-    <h1>Laundry Notifications</h1>
-    <button id="settingsBtn" title="Settings" aria-label="Settings">⚙️</button>
-  </header>
+  <script>
+    function loadSettings() {
+      let token = localStorage.getItem('st_pat');
+      let ids = localStorage.getItem('device_ids');
 
-  <main>
-    <!-- Dashboard View -->
-    <section id="dashboard" class="active" aria-label="Dashboard">
-      <div id="buttons" role="list" aria-live="polite" aria-atomic="true"></div>
-    </section>
-
-    <!-- Settings View -->
-    <section id="settings" aria-label="Settings">
-      <form id="settingsForm">
-        <div id="settingsNote">
-          Enter your SmartThings Personal Access Token (PAT), Motion Sensor Device ID, and the four switch device IDs with friendly names.<br>
-          Names can be any word(s), only the first word shows on dashboard buttons.
-        </div>
-
-        <label for="patInput">Personal Access Token (PAT):</label>
-        <input id="patInput" type="password" autocomplete="off" required placeholder="Paste your PAT here" aria-required="true" />
-
-        <label for="motionIdInput">Motion Sensor Device ID:</label>
-        <input id="motionIdInput" type="text" autocomplete="off" required placeholder="Motion sensor device ID" aria-required="true" />
-
-        <label>Switch Devices (Name and Device ID):</label>
-        <div class="device-row">
-          <input type="text" id="name0" placeholder="Name (e.g., Washer)" required aria-label="Switch 1 name" />
-          <input type="text" id="id0" placeholder="Device ID" required aria-label="Switch 1 device ID" />
-        </div>
-        <div class="device-row">
-          <input type="text" id="name1" placeholder="Name (e.g., Dryer)" required aria-label="Switch 2 name" />
-          <input type="text" id="id1" placeholder="Device ID" required aria-label="Switch 2 device ID" />
-        </div>
-        <div class="device-row">
-          <input type="text" id="name2" placeholder="Name" required aria-label="Switch 3 name" />
-          <input type="text" id="id2" placeholder="Device ID" required aria-label="Switch 3 device ID" />
-        </div>
-        <div class="device-row">
-          <input type="text" id="name3" placeholder="Name" required aria-label="Switch 4 name" />
-          <input type="text" id="id3" placeholder="Device ID" required aria-label="Switch 4 device ID" />
-        </div>
-
-        <button id="saveSettingsBtn" type="submit">Save Settings</button>
-      </form>
-    </section>
-  </main>
-
-<script>
-  const settingsBtn = document.getElementById('settingsBtn');
-  const dashboardView = document.getElementById('dashboard');
-  const settingsView = document.getElementById('settings');
-
-  const patInput = document.getElementById('patInput');
-  const motionIdInput = document.getElementById('motionIdInput');
-  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-
-  const nameInputs = [
-    document.getElementById('name0'),
-    document.getElementById('name1'),
-    document.getElementById('name2'),
-    document.getElementById('name3')
-  ];
-  const idInputs = [
-    document.getElementById('id0'),
-    document.getElementById('id1'),
-    document.getElementById('id2'),
-    document.getElementById('id3')
-  ];
-
-  // Load settings from localStorage or empty defaults
-  function loadSettings() {
-    const pat = localStorage.getItem('smartthings_pat') || '';
-    const motionId = localStorage.getItem('motion_sensor_id') || '';
-    const devices = JSON.parse(localStorage.getItem('device_ids') || '[]');
-    patInput.value = pat;
-    motionIdInput.value = motionId;
-    for (let i = 0; i < 4; i++) {
-      if (devices[i]) {
-        nameInputs[i].value = devices[i].name || '';
-        idInputs[i].value = devices[i].id || '';
-      } else {
-        nameInputs[i].value = '';
-        idInputs[i].value = '';
+      while (!token || token.trim() === '') {
+        token = prompt("Enter your SmartThings PAT (Personal Access Token):");
+        if (token) token = token.trim();
       }
-    }
-  }
+      localStorage.setItem('st_pat', token);
 
-  // Save settings to localStorage
-  function saveSettings() {
-    const pat = patInput.value.trim();
-    const motionId = motionIdInput.value.trim();
-    if (!pat || !motionId) {
-      alert('Please enter your PAT and motion sensor device ID.');
-      return false;
+      while (!ids || ids.trim() === '') {
+        ids = prompt("Enter your Device IDs (comma-separated):");
+        if (ids) ids = ids.trim();
+      }
+      localStorage.setItem('device_ids', ids);
+
+      return {
+        token,
+        switches: ids.split(',').map(id => ({ id: id.trim() }))
+      };
     }
-    const devices = [];
-    for (let i = 0; i < 4; i++) {
-      const name = nameInputs[i].value.trim();
-      const id = idInputs[i].value.trim();
-      if (!name || !id) {
-        alert('Please enter name and device ID for all 4 switches.');
+
+    async function getStatus(device, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}/status`, { headers });
+        const json = await res.json();
+        return json.components.main.switch.switch.value === 'on';
+      } catch {
         return false;
       }
-      devices.push({ name, id });
     }
-    localStorage.setItem('smartthings_pat', pat);
-    localStorage.setItem('motion_sensor_id', motionId);
-    localStorage.setItem('device_ids', JSON.stringify(devices));
-    return true;
-  }
 
-  // Switch to dashboard view
-  function showDashboard() {
-    settingsView.classList.remove('active');
-    dashboardView.classList.add('active');
-  }
-
-  // Switch to settings view
-  function showSettings() {
-    dashboardView.classList.remove('active');
-    settingsView.classList.add('active');
-  }
-
-  // Validate settings exist on load and decide which view to show
-  function checkSettingsOrShowSettings() {
-    const pat = localStorage.getItem('smartthings_pat');
-    const motionId = localStorage.getItem('motion_sensor_id');
-    const devices = JSON.parse(localStorage.getItem('device_ids') || '[]');
-    if (!pat || !motionId || devices.length !== 4) {
-      showSettings();
-    } else {
-      showDashboard();
-    }
-  }
-
-  // Generate dashboard buttons from saved device info
-  const buttonsDiv = document.getElementById('buttons');
-
-  // Create a button element for each device, with proper styling and icon
-  function createButton(device, index) {
-    const btn = document.createElement('button');
-    btn.classList.add('btn');
-    btn.setAttribute('role', 'listitem');
-    // Show first word of the name as label
-    const label = device.name.split(' ')[0];
-    btn.textContent = label;
-
-    // Add bell icon for notification
-    const bell = document.createElement('div');
-    bell.classList.add('bell-icon');
-    bell.textContent = '🔔';
-    btn.prepend(bell);
-
-    // Initially off style
-    btn.classList.add('off');
-
-    // Toggle on click
-    btn.addEventListener('click', () => {
-      if (btn.classList.contains('off')) {
-        btn.classList.remove('off');
-        btn.classList.add('on');
-      } else {
-        btn.classList.remove('on');
-        btn.classList.add('off');
+    async function getLabel(device, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${device.id}`, { headers });
+        const json = await res.json();
+        const fullName = json.label || json.name || "Switch";
+        return fullName.split(' ')[0];
+      } catch {
+        return "Switch";
       }
-    });
-
-    return btn;
-  }
-
-  // Render dashboard buttons
-  function renderDashboard() {
-    buttonsDiv.innerHTML = '';
-    const devices = JSON.parse(localStorage.getItem('device_ids') || '[]');
-    devices.forEach((device, index) => {
-      const btn = createButton(device, index);
-      buttonsDiv.appendChild(btn);
-    });
-  }
-
-  // Event listeners
-
-  // Settings button toggles views
-  settingsBtn.addEventListener('click', () => {
-    if (dashboardView.classList.contains('active')) {
-      showSettings();
-    } else {
-      showDashboard();
     }
-  });
 
-  // Save settings form submit
-  document.getElementById('settingsForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (saveSettings()) {
-      renderDashboard();
-      showDashboard();
+    async function toggle(device, currentState, headers, updateFn) {
+      const command = currentState ? "off" : "on";
+      await fetch(`https://api.smartthings.com/v1/devices/${device.id}/commands`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          commands: [{ component: "main", capability: "switch", command }]
+        })
+      });
+      updateFn();
     }
-  });
 
-  // On page load
-  window.addEventListener('DOMContentLoaded', () => {
-    loadSettings();
-    checkSettingsOrShowSettings();
-    renderDashboard();
-  });
-</script>
+    async function main() {
+      const { token, switches } = loadSettings();
+
+      const headers = {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      };
+
+      async function updateButtons() {
+        const container = document.getElementById("buttons");
+        container.innerHTML = "";
+
+        for (let device of switches) {
+          const [label, isOn] = await Promise.all([
+            getLabel(device, headers),
+            getStatus(device, headers)
+          ]);
+
+          const btn = document.createElement("button");
+          btn.className = "btn " + (isOn ? "on" : "off");
+
+          const icon = document.createElement("div");
+          icon.className = "icon " + (isOn ? "on" : "off");
+          icon.innerHTML = "🔔";
+
+          const text = document.createElement("div");
+          text.innerText = `${label}\n(${isOn ? "ON" : "OFF"})`;
+
+          btn.appendChild(icon);
+          btn.appendChild(text);
+          btn.onclick = () => toggle(device, isOn, headers, updateButtons);
+          container.appendChild(btn);
+        }
+      }
+
+      document.getElementById("settings-btn").addEventListener("click", () => {
+        let newToken = prompt("Update SmartThings PAT:", localStorage.getItem('st_pat') || "");
+        if (newToken) newToken = newToken.trim();
+        let newIds = prompt("Update Device IDs (comma-separated):", localStorage.getItem('device_ids') || "");
+        if (newIds) newIds = newIds.trim();
+
+        if (newToken && newIds) {
+          localStorage.setItem('st_pat', newToken);
+          localStorage.setItem('device_ids', newIds);
+          location.reload();
+        } else {
+          alert("Both SmartThings PAT and Device IDs are required.");
+        }
+      });
+
+      updateButtons();
+      setInterval(updateButtons, 5000);
+    }
+
+    window.onload = main;
+  </script>
 </body>
 </html>
