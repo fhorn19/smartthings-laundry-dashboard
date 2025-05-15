@@ -42,6 +42,7 @@
       align-items: center;
       justify-content: center;
       white-space: pre-line;
+      min-height: 100px;
     }
 
     button.btn.off {
@@ -124,7 +125,6 @@
       Device IDs (comma-separated):
       <input type="text" id="ids-input" />
     </label>
-    <!-- Motion Sensor Input -->
     <label>
       Motion Sensor Device ID:
       <input type="text" id="motion-id-input" />
@@ -136,11 +136,30 @@
   </div>
 
   <script>
+    let motionTimeout;
+    let wakeLock = null;
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.error("Wake lock error:", err);
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+      }
+    }
+
     function loadSettings() {
       let token = localStorage.getItem('st_pat') || '';
       let ids = localStorage.getItem('device_ids') || '';
       let motionId = localStorage.getItem('motion_id') || '';
-
       return {
         token,
         motionId,
@@ -169,6 +188,31 @@
       }
     }
 
+    async function getMotionStatus(id, headers) {
+      try {
+        const res = await fetch(`https://api.smartthings.com/v1/devices/${id}/status`, { headers });
+        const json = await res.json();
+        return json.components.main.motionSensor.motion.value === 'active';
+      } catch (err) {
+        console.error("Motion status error:", err);
+        return false;
+      }
+    }
+
+    async function monitorMotion(id, headers) {
+      if (!id) return;
+      setInterval(async () => {
+        const active = await getMotionStatus(id, headers);
+        if (active) {
+          await requestWakeLock();
+          clearTimeout(motionTimeout);
+          motionTimeout = setTimeout(() => {
+            releaseWakeLock();
+          }, 30000);
+        }
+      }, 5000);
+    }
+
     async function toggle(device, currentState, headers, updateFn) {
       const command = currentState ? "off" : "on";
       await fetch(`https://api.smartthings.com/v1/devices/${device.id}/commands`, {
@@ -181,94 +225,68 @@
       updateFn();
     }
 
-    async function getMotionStatus(motionId, headers) {
-      try {
-        const res = await fetch(`https://api.smartthings.com/v1/devices/${motionId}/status`, { headers });
-        const json = await res.json();
-        return json.components.main.motionSensor.motion.value === 'active';
-      } catch {
-        return false;
-      }
-    }
+    let switches = [];
+    let headers = {};
+    const buttonMap = new Map();
 
-    let wakeLock = null;
-    let releaseTimeout = null;
+    async function updateButtons() {
+      for (let device of switches) {
+        const [label, isOn] = await Promise.all([
+          getLabel(device, headers),
+          getStatus(device, headers)
+        ]);
 
-    async function requestWakeLock() {
-      try {
-        if (!wakeLock) {
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {
-        console.error("Wake lock error:", err);
-      }
-    }
+        let btn = buttonMap.get(device.id);
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.classList.add("btn");
+          btn.dataset.id = device.id;
 
-    function releaseWakeLock() {
-      if (wakeLock) {
-        wakeLock.release().then(() => {
-          wakeLock = null;
-        });
-      }
-    }
+          const icon = document.createElement("div");
+          icon.classList.add("icon");
+          icon.innerText = "🔔";
 
-    async function monitorMotion(motionId, headers) {
-      let wasActive = false;
+          const labelDiv = document.createElement("div");
+          labelDiv.classList.add("label");
 
-      setInterval(async () => {
-        const isActive = await getMotionStatus(motionId, headers);
+          btn.appendChild(icon);
+          btn.appendChild(labelDiv);
+          btn.onclick = () => toggle(device, isOn, headers, updateButtons);
 
-        if (isActive && !wasActive) {
-          requestWakeLock();
-          if (releaseTimeout) clearTimeout(releaseTimeout);
+          document.getElementById("buttons").appendChild(btn);
+          buttonMap.set(device.id, btn);
         }
 
-        if (!isActive && wasActive) {
-          releaseTimeout = setTimeout(() => {
-            releaseWakeLock();
-          }, 30000);
+        const newStateClass = isOn ? "on" : "off";
+        if (!btn.classList.contains(newStateClass)) {
+          btn.classList.remove("on", "off");
+          btn.classList.add(newStateClass);
         }
 
-        wasActive = isActive;
-      }, 5000);
+        const icon = btn.querySelector(".icon");
+        const labelDiv = btn.querySelector(".label");
+
+        icon.className = "icon " + newStateClass;
+
+        const newLabelText = `${label}
+(${isOn ? "ON" : "OFF"})`;
+        if (labelDiv.innerText !== newLabelText) {
+          labelDiv.innerText = newLabelText;
+        }
+      }
     }
 
     async function main() {
-      const { token, switches, motionId } = loadSettings();
-
-      const headers = {
-        "Authorization": "Bearer " + token,
+      const settings = loadSettings();
+      switches = settings.switches;
+      headers = {
+        "Authorization": "Bearer " + settings.token,
         "Content-Type": "application/json"
       };
 
-      async function updateButtons() {
-  const container = document.getElementById("buttons");
-  container.innerHTML = "";
-
-  for (let device of switches) {
-    const [label, isOn] = await Promise.all([
-      getLabel(device, headers),
-      getStatus(device, headers)
-    ]);
-
-    const btn = document.createElement("button");
-    btn.className = "btn " + (isOn ? "on" : "off");
-
-    const icon = document.createElement("div");
-    icon.className = "icon " + (isOn ? "on" : "off");
-    icon.innerHTML = "🔔";
-
-    const text = document.createElement("div");
-    text.innerText = `${label}
-(${isOn ? "ON" : "OFF"})`;
-
-    btn.appendChild(icon);
-    btn.appendChild(text);
-    btn.onclick = () => toggle(device, isOn, headers, updateButtons);
-    container.appendChild(btn);
-  }
-}
-
+      if (settings.motionId) {
+        monitorMotion(settings.motionId, headers);
+      }
 
       document.getElementById("settings-btn").addEventListener("click", () => {
         document.getElementById("buttons").style.display = "none";
@@ -278,10 +296,6 @@
         document.getElementById("ids-input").value = localStorage.getItem('device_ids') || '';
         document.getElementById("motion-id-input").value = localStorage.getItem('motion_id') || '';
       });
-
-      if (motionId) {
-        monitorMotion(motionId, headers);
-      }
 
       updateButtons();
       setInterval(updateButtons, 5000);
@@ -295,10 +309,10 @@
       if (newToken && newIds) {
         localStorage.setItem('st_pat', newToken);
         localStorage.setItem('device_ids', newIds);
-        localStorage.setItem('motion_id', newMotionId || '');
+        localStorage.setItem('motion_id', newMotionId);
         location.reload();
       } else {
-        alert("Both PAT and device IDs are required.");
+        alert("SmartThings PAT and Device IDs are required.");
       }
     });
 
